@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoveAngle — Analizador de movimiento</title>
+  <meta name="description" content="Analizador web de movimiento humano basado en estimación de pose y análisis angular." />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <span class="eyebrow">ANÁLISIS BIOINSTRUMENTAL · KINESIOLOGÍA</span>
+      <h1>MoveAngle</h1>
+      <p>Analizador de movimiento humano mediante estimación de pose y ángulos articulares.</p>
+    </div>
+    <div class="status-pill" id="modelStatus">● Modelo no iniciado</div>
+  </header>
+
+  <main class="container">
+    <section class="card intro-card">
+      <div>
+        <h2>¿Qué hace esta interfaz?</h2>
+        <p>Sube un video, selecciona una articulación o usa una configuración predefinida y la aplicación detectará puntos anatómicos en cada cuadro. Con esos puntos calcula el ángulo formado por tres articulaciones y lo muestra sobre el movimiento, junto con su evolución temporal.</p>
+      </div>
+      <div class="privacy-note"><strong>Privacidad:</strong> el video se procesa localmente en el navegador. No se sube a un servidor de esta aplicación.</div>
+    </section>
+
+    <section class="grid-layout">
+      <aside class="card controls">
+        <h2>1 · Configuración</h2>
+        <label class="upload-box" for="videoInput">
+          <span class="upload-icon">＋</span>
+          <span><strong>Cargar video</strong><small>MP4, WebM o MOV según soporte del navegador</small></span>
+        </label>
+        <input id="videoInput" type="file" accept="video/*" hidden />
+        <div class="file-name" id="fileName">Ningún video seleccionado.</div>
+
+        <label for="preset">Movimiento / ángulo</label>
+        <select id="preset">
+          <option value="hip-left">Cadera izquierda · hombro–cadera–rodilla</option>
+          <option value="hip-right">Cadera derecha · hombro–cadera–rodilla</option>
+          <option value="knee-left">Rodilla izquierda · cadera–rodilla–tobillo</option>
+          <option value="knee-right">Rodilla derecha · cadera–rodilla–tobillo</option>
+          <option value="elbow-left">Codo izquierdo · hombro–codo–muñeca</option>
+          <option value="elbow-right">Codo derecho · hombro–codo–muñeca</option>
+          <option value="shoulder-left">Hombro izquierdo · codo–hombro–cadera</option>
+          <option value="shoulder-right">Hombro derecho · codo–hombro–cadera</option>
+          <option value="ankle-left">Tobillo izquierdo · rodilla–tobillo–pie</option>
+          <option value="ankle-right">Tobillo derecho · rodilla–tobillo–pie</option>
+          <option value="wrist-left">Muñeca izquierda · codo–muñeca–índice</option>
+          <option value="wrist-right">Muñeca derecha · codo–muñeca–índice</option>
+        </select>
+
+        <details>
+          <summary>Personalizar los 3 puntos</summary>
+          <div class="custom-grid">
+            <label>Punto A<select id="jointA"></select></label>
+            <label>Punto B (vértice)<select id="jointB"></select></label>
+            <label>Punto C<select id="jointC"></select></label>
+          </div>
+          <button class="secondary" id="applyCustom">Aplicar ángulo personalizado</button>
+        </details>
+
+        <div class="row">
+          <label>Umbral de visibilidad <input id="visibility" type="number" min="0.1" max="0.9" step="0.05" value="0.35" /></label>
+          <label>FPS de análisis <input id="analysisFps" type="number" min="5" max="30" step="1" value="20" /></label>
+        </div>
+
+        <label>Objetivo opcional (°)<input id="targetAngle" type="number" min="0" max="180" value="180" /></label>
+        <p class="hint">Para el hip thrust, deja <strong>cadera</strong> y objetivo <strong>180°</strong>. El programa no asume que todos los movimientos sean hip thrust: puedes cambiar el ángulo para analizar sentadillas, flexión de codo, hombro, puente glúteo, etc.</p>
+
+        <div class="button-stack">
+          <button class="primary" id="startBtn" disabled>▶ Iniciar análisis</button>
+          <button class="secondary" id="pauseBtn" disabled>Ⅱ Pausar</button>
+          <button class="secondary" id="recordBtn" disabled>● Grabar video analizado</button>
+          <button class="secondary" id="resetBtn">↺ Reiniciar</button>
+        </div>
+
+        <div class="legend">
+          <span><i class="dot good"></i> Punto detectado</span>
+          <span><i class="dot line"></i> Segmentos corporales</span>
+          <span><i class="dot angle"></i> Ángulo seleccionado</span>
+        </div>
+      </aside>
+
+      <section class="card workspace">
+        <div class="workspace-head">
+          <div><h2>2 · Análisis en tiempo real</h2><span id="videoInfo">Sin video</span></div>
+          <div class="metric"><span>Ángulo actual</span><strong id="angleValue">—</strong></div>
+        </div>
+        <div class="visuals">
+          <div class="visual-panel">
+            <span class="panel-label">VIDEO</span>
+            <video id="video" playsinline muted></video>
+            <div class="empty-state" id="emptyState">Carga un video para comenzar.</div>
+          </div>
+          <div class="visual-panel skeleton-panel">
+            <span class="panel-label">ESQUELETO + ÁNGULO</span>
+            <canvas id="skeletonCanvas"></canvas>
+          </div>
+        </div>
+        <div class="stats">
+          <div><span>Mínimo observado</span><strong id="minAngle">—</strong></div>
+          <div><span>Máximo observado</span><strong id="maxAngle">—</strong></div>
+          <div><span>Rango</span><strong id="rangeAngle">—</strong></div>
+          <div><span>Tiempo</span><strong id="timeValue">00:00.0</strong></div>
+        </div>
+      </section>
+    </section>
+
+    <section class="card chart-card">
+      <div class="chart-head">
+        <div><h2>3 · Evolución angular</h2><p>Ángulo seleccionado en función del tiempo.</p></div>
+        <div class="target-badge">Objetivo: <strong id="targetBadge">180°</strong></div>
+      </div>
+      <canvas id="chartCanvas"></canvas>
+    </section>
+
+    <section class="card tutorial">
+      <h2>4 · Tutorial rápido</h2>
+      <ol>
+        <li><strong>Carga un video</strong> grabado idealmente de lado y con el cuerpo completo visible.</li>
+        <li><strong>Elige el ángulo.</strong> Para hip thrust, selecciona cadera izquierda/derecha: hombro → cadera → rodilla.</li>
+        <li>Presiona <strong>Iniciar análisis</strong>. La aplicación detectará la pose cuadro a cuadro y calculará el ángulo.</li>
+        <li>Observa el <strong>esqueleto</strong>, el ángulo sobre el vértice y el gráfico. Puedes pausar y revisar la fase del movimiento.</li>
+        <li>Si necesitas entregar un resultado audiovisual, presiona <strong>Grabar video analizado</strong>. Se generará un WebM con el video y la visualización del análisis.</li>
+        <li>Para otro movimiento, cambia el ángulo. También puedes abrir <strong>Personalizar los 3 puntos</strong> y seleccionar cualquier combinación disponible.</li>
+      </ol>
+      <div class="method-note"><strong>Interpretación del hip thrust:</strong> el ángulo hombro–cadera–rodilla se aproxima a 90° cuando el tronco y muslo están relativamente perpendiculares y aumenta hacia 180° cuando ambos segmentos se alinean. El valor debe interpretarse considerando la vista de cámara, la calidad de detección y la anatomía de la persona; esta herramienta es académica y no sustituye una evaluación clínica.</div>
+    </section>
+
+    <section class="card technical">
+      <h2>Base técnica</h2>
+      <p>La interfaz utiliza <strong>MediaPipe Pose Landmarker</strong> para estimar landmarks corporales y calcula ángulos mediante geometría vectorial. El análisis se ejecuta en el navegador, sin una API de pago ni una clave privada.</p>
+      <div class="tech-grid">
+        <span>Entrada: video local</span><span>Procesamiento: navegador</span><span>Variable: ángulo (°)</span><span>Salida: gráfico + video anotado</span>
+      </div>
+    </section>
+  </main>
+
+  <footer>MoveAngle · Proyecto académico de Análisis Bioinstrumental · Kinesiología</footer>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
